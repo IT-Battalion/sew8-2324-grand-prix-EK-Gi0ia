@@ -1,11 +1,14 @@
-import java.util.Stack;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.concurrent.*;
 
 public class MessageBBQ {
-    private BlockingDeque<Message> stack;
+    private Deque<Message> messageDeque;
     private long startingTimePoint;
+    private int max;
     public MessageBBQ(int max, F1driver sainz, F1driver norris, F1driver perez) {
-        stack = new LinkedBlockingDeque<>(max);
+        messageDeque = new ArrayDeque<>(max);
+        this.max = max;
         CountDownLatch latch = new CountDownLatch(1);
 
         // start threads
@@ -22,23 +25,38 @@ public class MessageBBQ {
     }
 
     public synchronized void push (String driverName, int nr) {
-        while (true) {
+        // wait for the stack not to be full
+        // if stack is full -> Thread is waiting
+        while (max >= messageDeque.size()) {
             try {
-                stack.putLast(new Message(driverName, System.currentTimeMillis()-startingTimePoint, nr));
-                // putLast was successful
-                return;
+                // waiting
+                this.wait();
             } catch (InterruptedException e) {
-                // putLast got interrupted - try again
+                throw new RuntimeException(e);
             }
+            // if stack is not full
+            try {
+                // -> save message (on tail)
+                messageDeque.addLast(new Message(driverName, System.currentTimeMillis()-startingTimePoint, nr));
+                // putLast was successful
+
+                // All waiting objects registered with the "this" object are notified and their block is removed.
+                // blocking is removed
+                this.notifyAll();
+                return;
+            } catch (IllegalStateException e) {
+                System.out.println("Capacity restrictions - alternatively: offerLast(E e)");
+            }
+
         }
     }
 
-    public Message pop() {
-        while (true) {
+    public synchronized Message pop() {
+        while (messageDeque.isEmpty()) {
             try {
-                return stack.take();
+                return messageDeque.pop();
                 // takeLast was successful
-            } catch (InterruptedException e) {
+            } catch (IllegalStateException e) {
                 // putLast got interrupted - try again
             }
         }
